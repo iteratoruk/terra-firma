@@ -30,3 +30,7 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Claude Code per-machine state (permission grants etc.). Other files under
+# .claude/ — e.g. shared subagents — are intentionally NOT ignored.
+.claude/settings.local.json
