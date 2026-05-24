@@ -1,0 +1,44 @@
+# golangci-lint configuration for Terra Firma.
+# Serves agentize C6.1 (coding guidelines, syntax level) by making standards
+# machine-enforced rather than prose an agent must remember. Run: make lint
+#
+# Philosophy: a small set of high-signal linters. Determinism and clean
+# boundaries are the project's deep invariants; linters can't enforce those
+# (CLAUDE.md and tests do), but they CAN keep the surface clean so review
+# attention is spent on the invariants, not on style.
+
+version: "2"
+
+run:
+  timeout: 3m
+  tests: true
+
+linters:
+  enable:
+    - errcheck      # unchecked errors — errors are values, check them (CLAUDE.md)
+    - govet         # suspicious constructs
+    - ineffassign   # ineffectual assignments
+    - staticcheck   # the big correctness/simplification suite
+    - unused        # dead code; a solo project accretes it fast
+    - misspell      # typos in comments/strings
+    - gocritic      # opinionated but catches real smells
+    - revive        # golint successor; naming and doc-comment conventions
+    - bodyclose     # cheap insurance for when the web dashboard arrives
+    - copyloopvar   # loop-variable capture (Go 1.22 changed semantics; stay explicit)
+
+  settings:
+    revive:
+      rules:
+        - name: exported
+          # Exported symbols should be documented — matters more than usual here
+          # because an agent reads doc comments to understand the API surface.
+          arguments: ["checkPrivateReceivers"]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

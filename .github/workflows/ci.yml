@@ -1,0 +1,59 @@
+# CI for Terra Firma. Serves agentize C8.1 L1 (agents can read pipeline status):
+# every push and PR runs the same gate as `make check`, plus lint and coverage,
+# so an agent can confirm its change is green without a human relaying the result.
+#
+# The job mirrors the Makefile targets deliberately — CI and local must agree, or
+# the feedback loop lies. If you change the gate, change it in the Makefile and
+# here together.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          check-latest: true
+
+      - name: Verify dependencies
+        run: make setup
+
+      - name: Format check
+        run: make fmt-check
+
+      - name: Vet
+        run: make vet
+
+      - name: Build
+        run: make build
+
+      - name: Test (race + coverage)
+        run: |
+          go test -race -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | tail -1
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
