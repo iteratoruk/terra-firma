@@ -14,21 +14,28 @@ type Command interface {
 // TileSpec is the configuration for one tile's single resource at world setup.
 // (V1: one resource per tile. The model will generalise to several stocks per
 // tile later; the spec stays the construction-time description.)
+//
+// TransitCondition is one of the determinants of carrier speed (see carrier.go
+// and the speed() rule). V1 vocabulary: "unimproved". Defaults to "unimproved"
+// when unset so existing tile configurations keep their meaning; later infra
+// (paved road, etc.) will require explicit setting.
 type TileSpec struct {
-	Hex      Hex
-	Resource string
-	Value    int
-	Capacity int
-	Regen    int
-	Harvest  int
+	Hex              Hex
+	Resource         string
+	Value            int
+	Capacity         int
+	Regen            int
+	Harvest          int
+	TransitCondition string
 }
 
 // Config is the full deterministic description of a world's initial state.
 // Same Config => same world, forever.
 type Config struct {
-	Seed  int64
-	Tiles []TileSpec
-	Goods []GoodSpec
+	Seed     int64
+	Tiles    []TileSpec
+	Goods    []GoodSpec
+	Carriers []CarrierSpec
 }
 
 // tile is the engine's internal, mutable tile. A tile is a location that bears a
@@ -38,15 +45,17 @@ type tile struct {
 	hex      Hex
 	resource string
 	stock    *Stock
+	transit  string
 }
 
 // World is the authoritative, mutable simulation state. It is a value the engine
 // owns; nothing outside mutates it directly.
 type World struct {
-	tick  uint64
-	rng   *RNG
-	tiles []*tile // kept in canonical hex order for deterministic iteration
-	goods []*good // kept in canonical order, same reason
+	tick     uint64
+	rng      *RNG
+	tiles    []*tile    // kept in canonical hex order for deterministic iteration
+	goods    []*good    // kept in canonical order, same reason
+	carriers []*carrier // kept in canonical order, same reason
 }
 
 // NewWorld builds a world from a Config. Tiles are sorted into canonical hex
@@ -58,7 +67,11 @@ func NewWorld(cfg Config) *World {
 		s := NewStock(ts.Value, ts.Capacity)
 		s.SetRegen(ts.Regen)
 		s.SetHarvest(ts.Harvest)
-		tiles = append(tiles, &tile{hex: ts.Hex, resource: ts.Resource, stock: s})
+		transit := ts.TransitCondition
+		if transit == "" {
+			transit = "unimproved"
+		}
+		tiles = append(tiles, &tile{hex: ts.Hex, resource: ts.Resource, stock: s, transit: transit})
 	}
 	// Deterministic order independent of how the caller listed the tiles.
 	sortTiles(tiles)
@@ -67,11 +80,17 @@ func NewWorld(cfg Config) *World {
 		goods = append(goods, &good{kind: gs.Kind, hex: gs.Hex})
 	}
 	sortGoods(goods)
+	carriers := make([]*carrier, 0, len(cfg.Carriers))
+	for _, cs := range cfg.Carriers {
+		carriers = append(carriers, &carrier{typ: cs.Type, hex: cs.Hex})
+	}
+	sortCarriers(carriers)
 	return &World{
-		tick:  0,
-		rng:   NewRNG(cfg.Seed),
-		tiles: tiles,
-		goods: goods,
+		tick:     0,
+		rng:      NewRNG(cfg.Seed),
+		tiles:    tiles,
+		goods:    goods,
+		carriers: carriers,
 	}
 }
 
@@ -95,42 +114,48 @@ func (w *World) Apply(c Command) { c.apply(w) }
 // (renderers, tests, dashboards). It carries levels AND rates, because trend is
 // a legibility requirement. It shares no mutable state with the World.
 type Snapshot struct {
-	Tick  uint64         `json:"tick"`
-	Tiles []TileSnapshot `json:"tiles"`
-	Goods []GoodSnapshot `json:"goods"`
+	Tick     uint64            `json:"tick"`
+	Tiles    []TileSnapshot    `json:"tiles"`
+	Goods    []GoodSnapshot    `json:"goods"`
+	Carriers []CarrierSnapshot `json:"carriers"`
 }
 
 // TileSnapshot is one tile's observable state. Net is included precomputed so a
 // renderer never has to reach back into the engine to show a trend.
+// TransitCondition is exposed so an observer can explain a carrier's speed
+// without reaching back into the engine ("slow because the road is mud").
 type TileSnapshot struct {
-	Q        int    `json:"q"`
-	R        int    `json:"r"`
-	Resource string `json:"resource"`
-	Value    int    `json:"value"`
-	Capacity int    `json:"capacity"`
-	Regen    int    `json:"regen"`
-	Harvest  int    `json:"harvest"`
-	Net      int    `json:"net"`
+	Q                int    `json:"q"`
+	R                int    `json:"r"`
+	Resource         string `json:"resource"`
+	TransitCondition string `json:"transit_condition"`
+	Value            int    `json:"value"`
+	Capacity         int    `json:"capacity"`
+	Regen            int    `json:"regen"`
+	Harvest          int    `json:"harvest"`
+	Net              int    `json:"net"`
 }
 
 // Snapshot produces the immutable view. Tiles come out in canonical hex order so
 // the serialised form is stable (essential for golden-file tests).
 func (w *World) Snapshot() Snapshot {
 	out := Snapshot{
-		Tick:  w.tick,
-		Tiles: make([]TileSnapshot, 0, len(w.tiles)),
-		Goods: make([]GoodSnapshot, 0, len(w.goods)),
+		Tick:     w.tick,
+		Tiles:    make([]TileSnapshot, 0, len(w.tiles)),
+		Goods:    make([]GoodSnapshot, 0, len(w.goods)),
+		Carriers: make([]CarrierSnapshot, 0, len(w.carriers)),
 	}
 	for _, t := range w.tiles {
 		out.Tiles = append(out.Tiles, TileSnapshot{
-			Q:        t.hex.Q,
-			R:        t.hex.R,
-			Resource: t.resource,
-			Value:    t.stock.Value(),
-			Capacity: t.stock.Capacity(),
-			Regen:    t.stock.Regen(),
-			Harvest:  t.stock.Harvest(),
-			Net:      t.stock.Net(),
+			Q:                t.hex.Q,
+			R:                t.hex.R,
+			Resource:         t.resource,
+			TransitCondition: t.transit,
+			Value:            t.stock.Value(),
+			Capacity:         t.stock.Capacity(),
+			Regen:            t.stock.Regen(),
+			Harvest:          t.stock.Harvest(),
+			Net:              t.stock.Net(),
 		})
 	}
 	for _, g := range w.goods {
@@ -138,6 +163,13 @@ func (w *World) Snapshot() Snapshot {
 			Kind: g.kind,
 			Q:    g.hex.Q,
 			R:    g.hex.R,
+		})
+	}
+	for _, c := range w.carriers {
+		out.Carriers = append(out.Carriers, CarrierSnapshot{
+			Type: c.typ,
+			Q:    c.hex.Q,
+			R:    c.hex.R,
 		})
 	}
 	return out

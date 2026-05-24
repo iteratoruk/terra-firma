@@ -5,6 +5,7 @@
       "q": 0,
       "r": 0,
       "resource": "forest",
+      "transit_condition": "unimproved",
       "value": 0,
       "capacity": 100,
       "regen": 2,
@@ -15,6 +16,7 @@
       "q": 0,
       "r": 1,
       "resource": "forest",
+      "transit_condition": "unimproved",
       "value": 70,
       "capacity": 100,
       "regen": 2,
@@ -25,6 +27,7 @@
       "q": 1,
       "r": 0,
       "resource": "soil",
+      "transit_condition": "unimproved",
       "value": 80,
       "capacity": 80,
       "regen": 1,
@@ -32,5 +35,6 @@
       "net": 1
     }
   ],
-  "goods": []
+  "goods": [],
+  "carriers": []
 }
