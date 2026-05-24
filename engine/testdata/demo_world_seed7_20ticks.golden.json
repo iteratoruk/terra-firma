@@ -1,0 +1,35 @@
+{
+  "tick": 20,
+  "tiles": [
+    {
+      "q": 0,
+      "r": 0,
+      "resource": "forest",
+      "value": 0,
+      "capacity": 100,
+      "regen": 2,
+      "harvest": 5,
+      "net": -3
+    },
+    {
+      "q": 0,
+      "r": 1,
+      "resource": "forest",
+      "value": 70,
+      "capacity": 100,
+      "regen": 2,
+      "harvest": 0,
+      "net": 2
+    },
+    {
+      "q": 1,
+      "r": 0,
+      "resource": "soil",
+      "value": 80,
+      "capacity": 80,
+      "regen": 1,
+      "harvest": 0,
+      "net": 1
+    }
+  ]
+}
