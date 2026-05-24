@@ -28,6 +28,7 @@ type TileSpec struct {
 type Config struct {
 	Seed  int64
 	Tiles []TileSpec
+	Goods []GoodSpec
 }
 
 // tile is the engine's internal, mutable tile. A tile is a location that bears a
@@ -45,6 +46,7 @@ type World struct {
 	tick  uint64
 	rng   *RNG
 	tiles []*tile // kept in canonical hex order for deterministic iteration
+	goods []*good // kept in canonical order, same reason
 }
 
 // NewWorld builds a world from a Config. Tiles are sorted into canonical hex
@@ -60,10 +62,16 @@ func NewWorld(cfg Config) *World {
 	}
 	// Deterministic order independent of how the caller listed the tiles.
 	sortTiles(tiles)
+	goods := make([]*good, 0, len(cfg.Goods))
+	for _, gs := range cfg.Goods {
+		goods = append(goods, &good{kind: gs.Kind, hex: gs.Hex})
+	}
+	sortGoods(goods)
 	return &World{
 		tick:  0,
 		rng:   NewRNG(cfg.Seed),
 		tiles: tiles,
+		goods: goods,
 	}
 }
 
@@ -87,6 +95,7 @@ func (w *World) Apply(c Command) { c.apply(w) }
 type Snapshot struct {
 	Tick  uint64         `json:"tick"`
 	Tiles []TileSnapshot `json:"tiles"`
+	Goods []GoodSnapshot `json:"goods"`
 }
 
 // TileSnapshot is one tile's observable state. Net is included precomputed so a
@@ -105,7 +114,11 @@ type TileSnapshot struct {
 // Snapshot produces the immutable view. Tiles come out in canonical hex order so
 // the serialised form is stable (essential for golden-file tests).
 func (w *World) Snapshot() Snapshot {
-	out := Snapshot{Tick: w.tick, Tiles: make([]TileSnapshot, 0, len(w.tiles))}
+	out := Snapshot{
+		Tick:  w.tick,
+		Tiles: make([]TileSnapshot, 0, len(w.tiles)),
+		Goods: make([]GoodSnapshot, 0, len(w.goods)),
+	}
 	for _, t := range w.tiles {
 		out.Tiles = append(out.Tiles, TileSnapshot{
 			Q:        t.hex.Q,
@@ -116,6 +129,13 @@ func (w *World) Snapshot() Snapshot {
 			Regen:    t.stock.Regen(),
 			Harvest:  t.stock.Harvest(),
 			Net:      t.stock.Net(),
+		})
+	}
+	for _, g := range w.goods {
+		out.Goods = append(out.Goods, GoodSnapshot{
+			Kind: g.kind,
+			Q:    g.hex.Q,
+			R:    g.hex.R,
 		})
 	}
 	return out
