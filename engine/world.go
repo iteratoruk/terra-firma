@@ -77,6 +77,8 @@ func NewWorld(cfg Config) *World {
 
 // Tick advances the world by one step. Order of operations is fixed and
 // deterministic. V1: every tile's resource stock steps (regen minus harvest).
+// Inert goods (w.goods) are deliberately NOT stepped — inertness is what
+// makes them inert. They change only when labour acts on them (later slice).
 func (w *World) Tick() {
 	for _, t := range w.tiles {
 		t.stock.Step()
