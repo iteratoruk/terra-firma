@@ -77,6 +77,42 @@ func TestPopulationDoesNotEatGoodOnDifferentTile(t *testing.T) {
 	}
 }
 
+func TestPopulationEatsAtMostOneGoodPerTick(t *testing.T) {
+	// Scenario 4 — the one-per-tick rule. Two free grains at the same hex; the
+	// population takes one and leaves the other for next tick. A naive "eat all
+	// edibles at my hex" implementation breaks here (reserve would be 12, and
+	// no grain would remain). Validated by transient mutation: replacing the
+	// `return` in populationEat with `continue` makes this test bite.
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+		},
+		Populations: []PopulationSpec{
+			{Hex: NewHex(0, 0), Reserve: 3, Metabolism: 1},
+		},
+		Goods: []GoodSpec{
+			{Kind: "grain", Hex: NewHex(0, 0)},
+			{Kind: "grain", Hex: NewHex(0, 0)},
+		},
+	})
+
+	w.Tick()
+
+	snap := w.Snapshot()
+	n := 0
+	for _, g := range snap.Goods {
+		if g.Kind == "grain" && !g.Held && g.Q == 0 && g.R == 0 {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("exactly one free grain should remain at (0,0), got %d (%+v)", n, snap.Goods)
+	}
+	if got := snap.Populations[0].Reserve; got != 7 {
+		t.Errorf("reserve after eating exactly one grain then metabolising: want 7, got %d", got)
+	}
+}
+
 func TestPopulationDoesNotEatHeldGood(t *testing.T) {
 	// Scenario 3 — the free-good predicate. A grain held by a carrier is not
 	// "on the tray". After 1 tick the carrier is still holding it and the
