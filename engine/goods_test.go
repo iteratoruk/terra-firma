@@ -74,6 +74,58 @@ func TestCarrierPicksUpLogAtItsCurrentTile(t *testing.T) {
 	}
 }
 
+func TestHeldGoodFollowsCarrierAndCoLocatedFreeGoodStaysPut(t *testing.T) {
+	// Scenario 3, with the discriminator from the #3 hand-off notes baked in:
+	// two logs at (0,0), one becomes held, one stays free. After the carrier
+	// moves to (1,0), the held log is at (1,0) (its location *derived* from
+	// the carrier) while the free log remains at (0,0). This is the test that
+	// rules out a "naive" implementation where Held is a label but position
+	// is still read from the good — it forces the snapshot to derive.
+	dest := NewHex(1, 0)
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+			{Hex: NewHex(1, 0), Resource: "soil", Capacity: 10},
+		},
+		Carriers: []CarrierSpec{
+			{Type: "porter", Hex: NewHex(0, 0), Destination: &dest},
+		},
+		Goods: []GoodSpec{
+			{Kind: "log", Hex: NewHex(0, 0)},
+			{Kind: "log", Hex: NewHex(0, 0)},
+		},
+	})
+
+	w.Apply(PickUp{Carrier: NewHex(0, 0), Good: NewHex(0, 0)})
+	w.Tick()
+
+	snap := w.Snapshot()
+	if c := snap.Carriers[0]; c.Q != 1 || c.R != 0 {
+		t.Fatalf("carrier should be at (1,0), got (%d,%d)", c.Q, c.R)
+	}
+	if len(snap.Goods) != 2 {
+		t.Fatalf("expected 2 logs in snapshot, got %d (%+v)", len(snap.Goods), snap.Goods)
+	}
+	var held, free *GoodSnapshot
+	for i := range snap.Goods {
+		g := &snap.Goods[i]
+		if g.Held {
+			held = g
+		} else {
+			free = g
+		}
+	}
+	if held == nil || free == nil {
+		t.Fatalf("expected one held and one free log, got %+v", snap.Goods)
+	}
+	if held.Q != 1 || held.R != 0 {
+		t.Errorf("held log should be at carrier's (1,0), got (%d,%d)", held.Q, held.R)
+	}
+	if free.Q != 0 || free.R != 0 {
+		t.Errorf("free log should still be at (0,0), got (%d,%d)", free.Q, free.R)
+	}
+}
+
 func TestSnapshotListsFreeLogAtItsTile(t *testing.T) {
 	w := NewWorld(Config{
 		Tiles: []TileSpec{
