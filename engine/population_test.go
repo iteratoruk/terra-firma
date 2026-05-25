@@ -34,6 +34,31 @@ func TestPopulationReserveDecreasesByMetabolismEachTick(t *testing.T) {
 	}
 }
 
+func TestPopulationReserveFloorsAtZero(t *testing.T) {
+	// Scenario 2: the reserve must not go negative — death (#7) belongs to a
+	// later slice, and "subsistence" stops meaning anything once the bar wraps
+	// around. Run well past the point where an unfloored draw would go
+	// negative. Validated by transient mutation (removing the floor guard
+	// makes this test bite with a deeply negative reserve) — see MEMORY:
+	// conservation test validation.
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+		},
+		Populations: []PopulationSpec{
+			{Hex: NewHex(0, 0), Reserve: 10, Metabolism: 1},
+		},
+	})
+
+	for i := 0; i < 100; i++ {
+		w.Tick()
+	}
+
+	if got := w.Snapshot().Populations[0].Reserve; got != 0 {
+		t.Errorf("after 100 ticks: want reserve 0 (floored), got %d", got)
+	}
+}
+
 func TestHeavierMetabolismDepletesFaster(t *testing.T) {
 	// Scenario 3: pins metabolism as a *per-population* rate, not a global
 	// constant. Two populations on different tiles with the same starting
