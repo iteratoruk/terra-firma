@@ -91,6 +91,54 @@ func TestPopulationAliveAtLimitDeadOneTickLater(t *testing.T) {
 	}
 }
 
+func TestRecoveryResetsStarvationStreak(t *testing.T) {
+	// Scenario 3 — the cliff is escapable from its edge. With reserve 3,
+	// metabolism 1, limit 3, the streak is 1 after 3 ticks. A grain
+	// (calorie 5) appearing at (0,0) is eaten on tick 4: +5 (reserve = 5)
+	// then -1 metabolise (reserve = 4); reserve > 0 at end of tick, so the
+	// streak resets to 0. Without the reset, the streak would persist at 1
+	// and the player would be punished for a recovery that has already
+	// happened — recovery is real, not a pause-button.
+	//
+	// The grain is added mid-run by reaching into the engine's slice from
+	// this same-package test. There is no public good-spawn command in V1;
+	// when one arrives the test can switch to Apply(...).
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+		},
+		Populations: []PopulationSpec{
+			{Hex: NewHex(0, 0), Reserve: 3, Metabolism: 1, StarvationLimit: 3},
+		},
+	})
+
+	for i := 0; i < 3; i++ {
+		w.Tick()
+	}
+
+	mid := w.Snapshot().Populations[0]
+	if mid.Reserve != 0 || mid.StarvationTicks != 1 {
+		t.Fatalf("mid-run setup wrong: want reserve 0 + streak 1, got reserve %d streak %d", mid.Reserve, mid.StarvationTicks)
+	}
+
+	w.goods = append(w.goods, &good{kind: "grain", hex: NewHex(0, 0)})
+	sortGoods(w.goods)
+
+	w.Tick()
+
+	snap := w.Snapshot()
+	if len(snap.Populations) != 1 {
+		t.Fatalf("recovery should keep the population alive, got %d", len(snap.Populations))
+	}
+	p := snap.Populations[0]
+	if p.Reserve != 4 {
+		t.Errorf("reserve after eat(+5) then metabolise(-1): want 4, got %d", p.Reserve)
+	}
+	if p.StarvationTicks != 0 {
+		t.Errorf("streak after recovery: want 0, got %d", p.StarvationTicks)
+	}
+}
+
 func countPopulationsAt(s Snapshot, h Hex) int {
 	n := 0
 	for _, p := range s.Populations {
