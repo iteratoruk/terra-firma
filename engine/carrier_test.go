@@ -72,3 +72,40 @@ func TestPorterAdvancesOneTilePerTickOnUnimproved(t *testing.T) {
 		t.Errorf("destination should be cleared on arrival, got %+v", c.Destination)
 	}
 }
+
+func TestCarrierWithNoDestinationStaysPut(t *testing.T) {
+	// Scenario 2 — conservation property: a carrier with no destination
+	// performs no autonomous movement. The tick may NOT shuffle carriers
+	// around for any reason other than satisfying a destination. (Vacuously
+	// true today; pinned so a future stepCarrier that loses the nil-guard
+	// can't drift carriers across the map. Validated by transient mutation:
+	// removing the nil-destination guard makes this test bite — see
+	// MEMORY: conservation test validation.)
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+		},
+		Carriers: []CarrierSpec{
+			{Type: "porter", Hex: NewHex(0, 0)},
+		},
+	})
+
+	for i := 0; i < 10; i++ {
+		w.Tick()
+	}
+
+	cs := w.Snapshot().Carriers
+	if len(cs) != 1 {
+		t.Fatalf("carrier count drifted: got %d, want 1", len(cs))
+	}
+	c := cs[0]
+	if c.Q != 0 || c.R != 0 {
+		t.Errorf("carrier with no destination moved to (%d,%d); should still be at (0,0)", c.Q, c.R)
+	}
+	if c.Type != "porter" {
+		t.Errorf("carrier type changed to %q; should still be porter", c.Type)
+	}
+	if c.Destination != nil {
+		t.Errorf("carrier acquired a destination it was never given: %+v", c.Destination)
+	}
+}
