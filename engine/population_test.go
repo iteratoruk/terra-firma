@@ -33,3 +33,41 @@ func TestPopulationReserveDecreasesByMetabolismEachTick(t *testing.T) {
 		t.Fatalf("after 5 ticks: want reserve 5, got %d", got)
 	}
 }
+
+func TestHeavierMetabolismDepletesFaster(t *testing.T) {
+	// Scenario 3: pins metabolism as a *per-population* rate, not a global
+	// constant. Two populations on different tiles with the same starting
+	// reserve diverge over 5 ticks because their metabolisms differ. If the
+	// tick draws every population down by the same hard-coded amount, this
+	// test bites.
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+			{Hex: NewHex(1, 0), Resource: "soil", Capacity: 10},
+		},
+		Populations: []PopulationSpec{
+			{Hex: NewHex(0, 0), Reserve: 10, Metabolism: 1},
+			{Hex: NewHex(1, 0), Reserve: 10, Metabolism: 2},
+		},
+	})
+
+	for i := 0; i < 5; i++ {
+		w.Tick()
+	}
+
+	got := populationsByHex(w.Snapshot())
+	if got[NewHex(0, 0)].Reserve != 5 {
+		t.Errorf("(0,0) metabolism 1 after 5 ticks: want reserve 5, got %d", got[NewHex(0, 0)].Reserve)
+	}
+	if got[NewHex(1, 0)].Reserve != 0 {
+		t.Errorf("(1,0) metabolism 2 after 5 ticks: want reserve 0, got %d", got[NewHex(1, 0)].Reserve)
+	}
+}
+
+func populationsByHex(s Snapshot) map[Hex]PopulationSnapshot {
+	out := make(map[Hex]PopulationSnapshot, len(s.Populations))
+	for _, p := range s.Populations {
+		out[NewHex(p.Q, p.R)] = p
+	}
+	return out
+}
