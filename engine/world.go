@@ -141,11 +141,14 @@ func (w *World) Tick() {
 // good's calorie value. At most one per tick per population; saturation is a
 // follow-up (see issue #6 notes).
 func (w *World) populationEat(p *population) {
-	if len(w.goods) == 0 {
+	for i, g := range w.goods {
+		if g.hex != p.hex {
+			continue
+		}
+		p.reserve += 5
+		w.goods = append(w.goods[:i], w.goods[i+1:]...)
 		return
 	}
-	p.reserve += 5
-	w.goods = w.goods[1:]
 }
 
 // stepCarrier advances one carrier by speed(carrier, currentTile) hexes toward
