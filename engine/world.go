@@ -82,7 +82,12 @@ func NewWorld(cfg Config) *World {
 	sortGoods(goods)
 	carriers := make([]*carrier, 0, len(cfg.Carriers))
 	for _, cs := range cfg.Carriers {
-		carriers = append(carriers, &carrier{typ: cs.Type, hex: cs.Hex})
+		var dest *Hex
+		if cs.Destination != nil {
+			d := *cs.Destination // copy: we own a private value
+			dest = &d
+		}
+		carriers = append(carriers, &carrier{typ: cs.Type, hex: cs.Hex, destination: dest})
 	}
 	sortCarriers(carriers)
 	return &World{
@@ -95,14 +100,62 @@ func NewWorld(cfg Config) *World {
 }
 
 // Tick advances the world by one step. Order of operations is fixed and
-// deterministic. V1: every tile's resource stock steps (regen minus harvest).
-// Inert goods (w.goods) are deliberately NOT stepped — inertness is what
-// makes them inert. They change only when labour acts on them (later slice).
+// deterministic. V1:
+//   - every tile's resource stock steps (regen minus harvest);
+//   - every carrier with a destination advances toward it by speed() tiles;
+//   - inert goods (w.goods) are deliberately NOT stepped — inertness is what
+//     makes them inert. They change only when labour acts on them (later slice).
 func (w *World) Tick() {
 	for _, t := range w.tiles {
 		t.stock.Step()
 	}
+	for _, c := range w.carriers {
+		w.stepCarrier(c)
+	}
 	w.tick++
+}
+
+// stepCarrier advances one carrier by speed(carrier, currentTile) hexes toward
+// its destination, clearing the destination on arrival. Each step picks the
+// first neighbour in canonical direction order that reduces hex distance to
+// the destination — deterministic, and ambiguity-free for the V1 collinear
+// paths the carrier story uses.
+func (w *World) stepCarrier(c *carrier) {
+	if c.destination == nil {
+		return
+	}
+	t := w.tileAt(c.hex)
+	if t == nil {
+		return // off-map; the carrier story keeps carriers on tiled hexes
+	}
+	for i, s := 0, speed(c, t); i < s; i++ {
+		if c.hex == *c.destination {
+			break
+		}
+		currDist := c.hex.Distance(*c.destination)
+		for _, d := range hexDirections {
+			next := c.hex.Add(d)
+			if next.Distance(*c.destination) < currDist {
+				c.hex = next
+				break
+			}
+		}
+	}
+	if c.hex == *c.destination {
+		c.destination = nil
+	}
+}
+
+// tileAt returns the tile at h, or nil if no tile exists there. Linear scan is
+// fine at V1 sizes; canonical-sort lets us upgrade to a binary search later if
+// it ever shows up in a profile.
+func (w *World) tileAt(h Hex) *tile {
+	for _, t := range w.tiles {
+		if t.hex == h {
+			return t
+		}
+	}
+	return nil
 }
 
 // Apply submits a command at the current tick boundary.
@@ -166,10 +219,16 @@ func (w *World) Snapshot() Snapshot {
 		})
 	}
 	for _, c := range w.carriers {
+		var dest *Hex
+		if c.destination != nil {
+			d := *c.destination // copy: snapshot shares no mutable state with the world
+			dest = &d
+		}
 		out.Carriers = append(out.Carriers, CarrierSnapshot{
-			Type: c.typ,
-			Q:    c.hex.Q,
-			R:    c.hex.R,
+			Type:        c.typ,
+			Q:           c.hex.Q,
+			R:           c.hex.R,
+			Destination: dest,
 		})
 	}
 	return out

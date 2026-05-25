@@ -7,8 +7,8 @@ import "sort"
 // construction. All spatial reasoning in the engine uses these; offset
 // coordinates are a renderer concern and must not appear in engine logic.
 type Hex struct {
-	Q int
-	R int
+	Q int `json:"q"`
+	R int `json:"r"`
 }
 
 // NewHex constructs an axial coordinate.

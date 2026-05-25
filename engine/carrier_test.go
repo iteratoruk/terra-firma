@@ -39,3 +39,36 @@ func TestSnapshotExposesCarrierTypeAndTileTransitCondition(t *testing.T) {
 		t.Errorf("carrier position wrong: got (%d,%d), want (0,0)", c.Q, c.R)
 	}
 }
+
+func TestPorterAdvancesOneTilePerTickOnUnimproved(t *testing.T) {
+	// Scenario 1: the discriminating movement test. A porter on unimproved
+	// ground advances 1 tile/tick toward its destination, and the destination
+	// is cleared on arrival. This pins both the rule output (porter ×
+	// unimproved → 1) and the tick-step mechanic (move toward destination,
+	// stop on arrival).
+	dest := NewHex(2, 0)
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+			{Hex: NewHex(1, 0), Resource: "soil", Capacity: 10},
+			{Hex: NewHex(2, 0), Resource: "soil", Capacity: 10},
+		},
+		Carriers: []CarrierSpec{
+			{Type: "porter", Hex: NewHex(0, 0), Destination: &dest},
+		},
+	})
+
+	w.Tick()
+	if c := w.Snapshot().Carriers[0]; c.Q != 1 || c.R != 0 {
+		t.Fatalf("after 1 tick: want porter at (1,0), got (%d,%d)", c.Q, c.R)
+	}
+
+	w.Tick()
+	c := w.Snapshot().Carriers[0]
+	if c.Q != 2 || c.R != 0 {
+		t.Fatalf("after 2 ticks: want porter at (2,0), got (%d,%d)", c.Q, c.R)
+	}
+	if c.Destination != nil {
+		t.Errorf("destination should be cleared on arrival, got %+v", c.Destination)
+	}
+}
