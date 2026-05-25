@@ -77,6 +77,39 @@ func TestPopulationDoesNotEatGoodOnDifferentTile(t *testing.T) {
 	}
 }
 
+func TestNonEdibleGoodsAreNotConsumed(t *testing.T) {
+	// Scenario 5 — the edibility predicate. A log has calorie value 0 in V1;
+	// the population cannot eat it. After 1 tick: the log is still free at
+	// (0,0) and the population has only metabolised (3 - 1 = 2). Discriminator
+	// against an "eat any free good at my hex" implementation that ignores
+	// calorieValue.
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+		},
+		Populations: []PopulationSpec{
+			{Hex: NewHex(0, 0), Reserve: 3, Metabolism: 1},
+		},
+		Goods: []GoodSpec{
+			{Kind: "log", Hex: NewHex(0, 0)},
+		},
+	})
+
+	w.Tick()
+
+	snap := w.Snapshot()
+	if len(snap.Goods) != 1 {
+		t.Fatalf("expected exactly 1 log still free at (0,0), got %d (%+v)", len(snap.Goods), snap.Goods)
+	}
+	g := snap.Goods[0]
+	if g.Kind != "log" || g.Held || g.Q != 0 || g.R != 0 {
+		t.Errorf("log should still be free at (0,0), got %+v", g)
+	}
+	if got := snap.Populations[0].Reserve; got != 2 {
+		t.Errorf("reserve should be just metabolised (3 - 1 = 2), got %d", got)
+	}
+}
+
 func TestPopulationEatsAtMostOneGoodPerTick(t *testing.T) {
 	// Scenario 4 — the one-per-tick rule. Two free grains at the same hex; the
 	// population takes one and leaves the other for next tick. A naive "eat all

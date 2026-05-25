@@ -148,7 +148,11 @@ func (w *World) populationEat(p *population) {
 		if g.hex != p.hex {
 			continue
 		}
-		p.reserve += 5
+		cv := calorieValue(g.kind)
+		if cv <= 0 {
+			continue
+		}
+		p.reserve += cv
 		w.goods = append(w.goods[:i], w.goods[i+1:]...)
 		return
 	}

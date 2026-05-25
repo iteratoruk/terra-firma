@@ -94,6 +94,18 @@ func (d Drop) apply(w *World) {
 	}
 }
 
+// calorieValue is the rule that returns the calorie value of one good of the
+// given kind. V1: "grain" is 5; every other kind is 0 (inert as far as eating
+// is concerned). Future food variety extends the rule's domain — never a
+// per-instance field on a good (see [[feedback_tech_modifiable_rates]] and the
+// speed() precedent in carrier.go).
+func calorieValue(kind string) int {
+	if kind == "grain" {
+		return 5
+	}
+	return 0
+}
+
 // lessGood is a total order on goods used to make snapshot iteration
 // deterministic regardless of construction order.
 func lessGood(a, b *good) bool {
