@@ -35,18 +35,22 @@ func TestPopulationReserveDecreasesByMetabolismEachTick(t *testing.T) {
 }
 
 func TestPopulationReserveFloorsAtZero(t *testing.T) {
-	// Scenario 2: the reserve must not go negative — death (#7) belongs to a
-	// later slice, and "subsistence" stops meaning anything once the bar wraps
-	// around. Run well past the point where an unfloored draw would go
-	// negative. Validated by transient mutation (removing the floor guard
-	// makes this test bite with a deeply negative reserve) — see MEMORY:
+	// Scenario 2: the reserve must not go negative — "subsistence" stops
+	// meaning anything once the bar wraps around, and the starvation streak
+	// (#7) reads `reserve == 0` literally, so an unfloored draw would never
+	// trigger the streak. Run well past the point where an unfloored draw
+	// would go negative. Validated by transient mutation (removing the floor
+	// guard makes this test bite with a deeply negative reserve) — see MEMORY:
 	// conservation test validation.
+	//
+	// StarvationLimit is set high enough that the population stays alive for
+	// the full run — this test pins the floor, not the cliff (#7 owns that).
 	w := NewWorld(Config{
 		Tiles: []TileSpec{
 			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
 		},
 		Populations: []PopulationSpec{
-			{Hex: NewHex(0, 0), Reserve: 10, Metabolism: 1},
+			{Hex: NewHex(0, 0), Reserve: 10, Metabolism: 1, StarvationLimit: 1000},
 		},
 	})
 
@@ -71,8 +75,8 @@ func TestHeavierMetabolismDepletesFaster(t *testing.T) {
 			{Hex: NewHex(1, 0), Resource: "soil", Capacity: 10},
 		},
 		Populations: []PopulationSpec{
-			{Hex: NewHex(0, 0), Reserve: 10, Metabolism: 1},
-			{Hex: NewHex(1, 0), Reserve: 10, Metabolism: 2},
+			{Hex: NewHex(0, 0), Reserve: 10, Metabolism: 1, StarvationLimit: 100},
+			{Hex: NewHex(1, 0), Reserve: 10, Metabolism: 2, StarvationLimit: 100},
 		},
 	})
 

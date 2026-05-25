@@ -15,25 +15,38 @@ package engine
 // later extend this rule's domain; here it is baseline draw-down with no work.
 
 // PopulationSpec is the construction-time description of one population.
+// StarvationLimit is the number of consecutive zero-reserve ticks the
+// population can survive; once the streak passes the limit, death (#7). Per-
+// population in V1; a future "resilience" tech would replace the stored value
+// with a rule (same shape as the speed rule — see [[feedback_tech_modifiable_rates]]).
 type PopulationSpec struct {
-	Hex        Hex
-	Reserve    int
-	Metabolism int
+	Hex             Hex
+	Reserve         int
+	Metabolism      int
+	StarvationLimit int
 }
 
 // population is the engine's internal, mutable population.
+// starvationTicks counts consecutive ticks ending at zero reserve; it resets
+// to zero the moment the reserve climbs back above zero (recovery is real).
 type population struct {
-	hex        Hex
-	reserve    int
-	metabolism int
+	hex             Hex
+	reserve         int
+	metabolism      int
+	starvationLimit int
+	starvationTicks int
 }
 
-// PopulationSnapshot is one population's observable state.
+// PopulationSnapshot is one population's observable state. StarvationTicks is
+// exposed BEFORE death (issue #7 legibility requirement — death is not allowed
+// to surprise). A dead population is an absence from this slice, never a flag.
 type PopulationSnapshot struct {
-	Q          int `json:"q"`
-	R          int `json:"r"`
-	Reserve    int `json:"reserve"`
-	Metabolism int `json:"metabolism"`
+	Q               int `json:"q"`
+	R               int `json:"r"`
+	Reserve         int `json:"reserve"`
+	Metabolism      int `json:"metabolism"`
+	StarvationTicks int `json:"starvation_ticks"`
+	StarvationLimit int `json:"starvation_limit"`
 }
 
 // lessPopulation is a total order on populations used to make snapshot

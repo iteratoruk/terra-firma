@@ -100,7 +100,12 @@ func NewWorld(cfg Config) *World {
 	sortCarriers(carriers)
 	populations := make([]*population, 0, len(cfg.Populations))
 	for _, ps := range cfg.Populations {
-		populations = append(populations, &population{hex: ps.Hex, reserve: ps.Reserve, metabolism: ps.Metabolism})
+		populations = append(populations, &population{
+			hex:             ps.Hex,
+			reserve:         ps.Reserve,
+			metabolism:      ps.Metabolism,
+			starvationLimit: ps.StarvationLimit,
+		})
 	}
 	sortPopulations(populations)
 	return &World{
@@ -139,7 +144,29 @@ func (w *World) Tick() {
 			p.reserve = 0
 		}
 	}
+	w.updateStarvation()
 	w.tick++
+}
+
+// updateStarvation runs the cliff at the end of each tick (after eat-then-
+// metabolise): a population at zero reserve accumulates a streak; one above
+// zero resets to zero (recovery is real); a streak that has passed the limit
+// removes the population from the world. Death is an absence from the
+// populations slice — no "dead" flag, no ghost.
+func (w *World) updateStarvation() {
+	alive := make([]*population, 0, len(w.populations))
+	for _, p := range w.populations {
+		if p.reserve == 0 {
+			p.starvationTicks++
+		} else {
+			p.starvationTicks = 0
+		}
+		if p.starvationTicks > p.starvationLimit {
+			continue
+		}
+		alive = append(alive, p)
+	}
+	w.populations = alive
 }
 
 // populationEat finds an edible, free, co-located good and consumes it: the
@@ -292,10 +319,12 @@ func (w *World) Snapshot() Snapshot {
 	}
 	for _, p := range w.populations {
 		out.Populations = append(out.Populations, PopulationSnapshot{
-			Q:          p.hex.Q,
-			R:          p.hex.R,
-			Reserve:    p.reserve,
-			Metabolism: p.metabolism,
+			Q:               p.hex.Q,
+			R:               p.hex.R,
+			Reserve:         p.reserve,
+			Metabolism:      p.metabolism,
+			StarvationTicks: p.starvationTicks,
+			StarvationLimit: p.starvationLimit,
 		})
 	}
 	return out

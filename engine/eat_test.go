@@ -213,7 +213,10 @@ func buildEatingConservationWorld(seed int64, K, C int) *World {
 		}
 	}
 	pops := []PopulationSpec{
-		{Hex: NewHex(0, 0), Reserve: 0, Metabolism: 0},
+		// StarvationLimit high enough to outlast the 200-step random harness:
+		// reserve starts at 0 with metabolism 0, so the streak ticks up every
+		// step it isn't fed. This test pins eating-conservation, not death.
+		{Hex: NewHex(0, 0), Reserve: 0, Metabolism: 0, StarvationLimit: 1000},
 	}
 	return NewWorld(Config{Seed: seed, Tiles: tiles, Goods: goods, Carriers: carriers, Populations: pops})
 }
