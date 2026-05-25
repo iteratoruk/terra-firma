@@ -222,6 +222,106 @@ func assertLogTotalIs(t *testing.T, snap Snapshot, want int, when string) {
 	}
 }
 
+func TestConservationHoldsAcrossArbitraryCommands(t *testing.T) {
+	// Issue #4 Scenario Outline: free + held logs == K at every tick under any
+	// sequence of pickup and drop commands, with no production or consumption.
+	// (Per #4 discussion: "move" here is the carrier's autonomous tick-step
+	// under a construction-time destination, not a command — so the generator
+	// emits only PickUp and Drop.)
+	//
+	// The generator pulls from w.rng so failures are reproducible from the
+	// seed alone — and so the world's evolution now genuinely depends on the
+	// seed, which the divergence assertion in world_test.go relies on.
+	//
+	// Validated by transient mutation per MEMORY: in turn, neuter Drop's
+	// holder-clear, then PickUp's holder-set-only (re-add the good as a free
+	// duplicate), then confirm each makes the property bite with a count-off
+	// message naming free+held.
+	cases := []struct {
+		name string
+		K, C int
+	}{
+		{"K=1_C=1", 1, 1},
+		{"K=3_C=1", 3, 1},
+		{"K=5_C=3", 5, 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := buildConservationWorld(17, tc.K, tc.C)
+			assertLogTotalIs(t, w.Snapshot(), tc.K, "initial")
+			for step := 0; step < 200; step++ {
+				applyRandomCommand(w)
+				assertLogTotalIs(t, w.Snapshot(), tc.K, fmt.Sprintf("step %d after command", step))
+				w.Tick()
+				assertLogTotalIs(t, w.Snapshot(), tc.K, fmt.Sprintf("step %d after tick", step))
+				if t.Failed() {
+					return // stop on first violation; the count alone is enough to diagnose
+				}
+			}
+		})
+	}
+}
+
+// buildConservationWorld lays out a small hex region with K logs and C
+// carriers in deterministic positions, each carrier with a construction-time
+// destination so the random-command harness has something to transport.
+// Layout is independent of the seed; randomness enters only via the
+// w.rng-driven command generator, so divergence across seeds is purely a
+// function of the commands chosen.
+func buildConservationWorld(seed int64, K, C int) *World {
+	tiles := []TileSpec{}
+	for q := -3; q <= 3; q++ {
+		for r := -3; r <= 3; r++ {
+			tiles = append(tiles, TileSpec{Hex: NewHex(q, r), Resource: "soil", Capacity: 10})
+		}
+	}
+	goods := make([]GoodSpec, K)
+	for i := 0; i < K; i++ {
+		goods[i] = GoodSpec{Kind: "log", Hex: NewHex(i-K/2, 0)}
+	}
+	carriers := make([]CarrierSpec, C)
+	for i := 0; i < C; i++ {
+		dest := NewHex(i-C/2, 1) // away from log row so carriers walk through pickup hexes
+		carriers[i] = CarrierSpec{
+			Type:        "porter",
+			Hex:         NewHex(i-C/2, -1),
+			Destination: &dest,
+		}
+	}
+	return NewWorld(Config{Seed: seed, Tiles: tiles, Goods: goods, Carriers: carriers})
+}
+
+// applyRandomCommand draws from w.rng to issue one PickUp or Drop. Reads
+// state via Snapshot() (the boundary applies to test code too) but consults
+// w.rng directly because in-package tests are allowed to and the harness has
+// to use the world's seeded RNG — see the divergence assertion in
+// world_test.go that depends on it.
+func applyRandomCommand(w *World) {
+	snap := w.Snapshot()
+	if len(snap.Carriers) == 0 {
+		return
+	}
+	c := snap.Carriers[w.rng.IntN(len(snap.Carriers))]
+	cHex := NewHex(c.Q, c.R)
+	switch w.rng.IntN(3) {
+	case 0:
+		// PickUp at the carrier's own hex — succeeds iff a free good is
+		// co-located. The bias toward same-hex attempts is what produces a
+		// meaningful number of *successful* pickups in a 5×5 area.
+		w.Apply(PickUp{Carrier: cHex, Good: cHex})
+	case 1:
+		// PickUp targeting a random known good's hex — usually fizzles
+		// (carrier and good on different tiles) but exercises the rejection
+		// path under the property.
+		if len(snap.Goods) > 0 {
+			g := snap.Goods[w.rng.IntN(len(snap.Goods))]
+			w.Apply(PickUp{Carrier: cHex, Good: NewHex(g.Q, g.R)})
+		}
+	case 2:
+		w.Apply(Drop{Carrier: cHex})
+	}
+}
+
 func TestSnapshotListsFreeLogAtItsTile(t *testing.T) {
 	w := NewWorld(Config{
 		Tiles: []TileSpec{
