@@ -12,17 +12,56 @@ type GoodSpec struct {
 	Hex  Hex
 }
 
-// good is the engine's internal, mutable inert good.
+// good is the engine's internal, mutable inert good. When holder is non-nil
+// the good is "held" by that carrier and its location is *derived* from the
+// carrier's position rather than read from hex. Holding does not promote a
+// good to a new mode of being — it is still inert; only its locator changes.
 type good struct {
-	kind string
-	hex  Hex
+	kind   string
+	hex    Hex
+	holder *carrier
 }
 
-// GoodSnapshot is one good's observable state.
+// GoodSnapshot is one good's observable state. Held distinguishes a carried
+// good from a free one even when both are at the same hex (the discriminator
+// that makes the relation observable to a renderer).
 type GoodSnapshot struct {
 	Kind string `json:"kind"`
 	Q    int    `json:"q"`
 	R    int    `json:"r"`
+	Held bool   `json:"held"`
+}
+
+// PickUp links a carrier to a co-located free good. Identifying both by hex
+// keeps the command honest about intent ("this carrier picks up that good")
+// without hiding the precondition that they must be on the same tile. If
+// either is missing, or the good is already held, or they are on different
+// tiles, the command is a no-op — the world is unchanged.
+type PickUp struct {
+	Carrier Hex
+	Good    Hex
+}
+
+func (p PickUp) apply(w *World) {
+	if p.Carrier != p.Good {
+		return
+	}
+	var c *carrier
+	for _, x := range w.carriers {
+		if x.hex == p.Carrier {
+			c = x
+			break
+		}
+	}
+	if c == nil {
+		return
+	}
+	for _, g := range w.goods {
+		if g.holder == nil && g.hex == p.Good {
+			g.holder = c
+			return
+		}
+	}
 }
 
 // lessGood is a total order on goods used to make snapshot iteration

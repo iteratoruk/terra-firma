@@ -37,6 +37,43 @@ func TestInertGoodsDoNotChangeOnTheirOwnTick(t *testing.T) {
 	}
 }
 
+func TestCarrierPicksUpLogAtItsCurrentTile(t *testing.T) {
+	// Scenario 1: a carrier commanded to pick up a co-located log holds it
+	// after the next tick, and no free log remains at the tile. This forces
+	// the holder relationship into existence and surfaces it on the snapshot.
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+		},
+		Carriers: []CarrierSpec{
+			{Type: "porter", Hex: NewHex(0, 0)},
+		},
+		Goods: []GoodSpec{
+			{Kind: "log", Hex: NewHex(0, 0)},
+		},
+	})
+
+	w.Apply(PickUp{Carrier: NewHex(0, 0), Good: NewHex(0, 0)})
+	w.Tick()
+
+	snap := w.Snapshot()
+	if len(snap.Goods) != 1 {
+		t.Fatalf("expected exactly 1 log in snapshot, got %d (%+v)", len(snap.Goods), snap.Goods)
+	}
+	g := snap.Goods[0]
+	if !g.Held {
+		t.Errorf("log should be held after pickup, got Held=false (%+v)", g)
+	}
+	if g.Q != 0 || g.R != 0 {
+		t.Errorf("held log should be at (0,0), got (%d,%d)", g.Q, g.R)
+	}
+	for _, gs := range snap.Goods {
+		if !gs.Held && gs.Q == 0 && gs.R == 0 {
+			t.Errorf("no free log should remain at (0,0), found %+v", gs)
+		}
+	}
+}
+
 func TestSnapshotListsFreeLogAtItsTile(t *testing.T) {
 	w := NewWorld(Config{
 		Tiles: []TileSpec{

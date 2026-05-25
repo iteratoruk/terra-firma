@@ -212,10 +212,17 @@ func (w *World) Snapshot() Snapshot {
 		})
 	}
 	for _, g := range w.goods {
+		h := g.hex
+		held := false
+		if g.holder != nil {
+			h = g.holder.hex
+			held = true
+		}
 		out.Goods = append(out.Goods, GoodSnapshot{
 			Kind: g.kind,
-			Q:    g.hex.Q,
-			R:    g.hex.R,
+			Q:    h.Q,
+			R:    h.R,
+			Held: held,
 		})
 	}
 	for _, c := range w.carriers {
