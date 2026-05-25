@@ -142,6 +142,9 @@ func (w *World) Tick() {
 // follow-up (see issue #6 notes).
 func (w *World) populationEat(p *population) {
 	for i, g := range w.goods {
+		if g.holder != nil {
+			continue
+		}
 		if g.hex != p.hex {
 			continue
 		}

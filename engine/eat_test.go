@@ -76,3 +76,39 @@ func TestPopulationDoesNotEatGoodOnDifferentTile(t *testing.T) {
 		t.Errorf("reserve should be just metabolised (3 - 1 = 2), got %d", got)
 	}
 }
+
+func TestPopulationDoesNotEatHeldGood(t *testing.T) {
+	// Scenario 3 — the free-good predicate. A grain held by a carrier is not
+	// "on the tray". After 1 tick the carrier is still holding it and the
+	// population has only metabolised (3 - 1 = 2). A naive "eat anything at my
+	// hex" implementation that ignores the holder breaks here.
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+		},
+		Carriers: []CarrierSpec{
+			{Type: "porter", Hex: NewHex(0, 0)},
+		},
+		Populations: []PopulationSpec{
+			{Hex: NewHex(0, 0), Reserve: 3, Metabolism: 1},
+		},
+		Goods: []GoodSpec{
+			{Kind: "grain", Hex: NewHex(0, 0)},
+		},
+	})
+
+	w.Apply(PickUp{Carrier: NewHex(0, 0), Good: NewHex(0, 0)})
+	w.Tick()
+
+	snap := w.Snapshot()
+	if len(snap.Goods) != 1 {
+		t.Fatalf("expected exactly 1 grain still in world (held), got %d (%+v)", len(snap.Goods), snap.Goods)
+	}
+	g := snap.Goods[0]
+	if !g.Held {
+		t.Errorf("grain should still be held by carrier, got %+v", g)
+	}
+	if got := snap.Populations[0].Reserve; got != 2 {
+		t.Errorf("reserve should be just metabolised (3 - 1 = 2), got %d", got)
+	}
+}
