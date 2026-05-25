@@ -152,7 +152,7 @@ func (w *World) Tick() {
 // metabolise): a population at zero reserve accumulates a streak; one above
 // zero resets to zero (recovery is real); a streak that has passed the limit
 // removes the population from the world. Death is an absence from the
-// populations slice — no "dead" flag, no ghost.
+// populations slice — no "dead" flag, no ghost (issue #7 notes).
 func (w *World) updateStarvation() {
 	alive := make([]*population, 0, len(w.populations))
 	for _, p := range w.populations {

@@ -49,6 +49,58 @@ func TestStarvationStreakBeginsWhenReserveHitsZero(t *testing.T) {
 	}
 }
 
+func TestPopulationAliveAtLimitDeadOneTickLater(t *testing.T) {
+	// Scenario 2 — the cliff itself. With reserve 3, metabolism 1, limit 3:
+	//   tick 3: reserve hits 0, streak → 1
+	//   tick 4: reserve still 0,  streak → 2
+	//   tick 5: reserve still 0,  streak → 3  (== limit, still alive)
+	//   tick 6: streak would be 4 (> limit), population removed
+	// The "alive at the limit" half forbids a one-tick guillotine (the streak
+	// must be observable at its peak BEFORE death — issue note legibility);
+	// the "gone after one more" half forbids a never-dies cliff.
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+		},
+		Populations: []PopulationSpec{
+			{Hex: NewHex(0, 0), Reserve: 3, Metabolism: 1, StarvationLimit: 3},
+		},
+	})
+
+	for i := 0; i < 5; i++ {
+		w.Tick()
+	}
+
+	snap := w.Snapshot()
+	if len(snap.Populations) != 1 {
+		t.Fatalf("after 5 ticks: want exactly 1 population (at the limit, still alive), got %d", len(snap.Populations))
+	}
+	p := snap.Populations[0]
+	if p.Q != 0 || p.R != 0 {
+		t.Errorf("population should still be at (0,0), got (%d,%d)", p.Q, p.R)
+	}
+	if p.StarvationTicks != 3 {
+		t.Errorf("starvation_ticks at the limit: want 3, got %d", p.StarvationTicks)
+	}
+
+	w.Tick()
+
+	snap = w.Snapshot()
+	if n := countPopulationsAt(snap, NewHex(0, 0)); n != 0 {
+		t.Errorf("after 1 more tick: want 0 populations at (0,0) (removed by the cliff), got %d (%+v)", n, snap.Populations)
+	}
+}
+
+func countPopulationsAt(s Snapshot, h Hex) int {
+	n := 0
+	for _, p := range s.Populations {
+		if p.Q == h.Q && p.R == h.R {
+			n++
+		}
+	}
+	return n
+}
+
 func TestSnapshotExposesStarvationFieldsAndRoundTrips(t *testing.T) {
 	// Legibility + snapshot-as-only-window requirement: the streak and the
 	// limit are visible to observers, and the JSON form round-trips so the
