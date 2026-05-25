@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -157,6 +158,67 @@ func TestPickUpIsRejectedWhenCarrierAndGoodAreOnDifferentTiles(t *testing.T) {
 	}
 	if g.Q != 1 || g.R != 0 {
 		t.Errorf("free log should still be at (1,0), got (%d,%d)", g.Q, g.R)
+	}
+}
+
+func TestPickUpMoveDropPreservesLogCount(t *testing.T) {
+	// Issue #4 Scenario 1: a pickup-move-drop preserves the total log count.
+	// At every observed tick (and around each command boundary) free logs +
+	// held logs == 1. The discriminating assertion that *forces* Drop's body
+	// is the post-drop check that the log is free at the carrier's drop hex —
+	// a stub Drop satisfies the count but not the held->free transition.
+	dest := NewHex(3, 0)
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+			{Hex: NewHex(1, 0), Resource: "soil", Capacity: 10},
+			{Hex: NewHex(2, 0), Resource: "soil", Capacity: 10},
+			{Hex: NewHex(3, 0), Resource: "soil", Capacity: 10},
+		},
+		Carriers: []CarrierSpec{
+			{Type: "porter", Hex: NewHex(0, 0), Destination: &dest},
+		},
+		Goods: []GoodSpec{
+			{Kind: "log", Hex: NewHex(0, 0)},
+		},
+	})
+
+	assertLogTotalIs(t, w.Snapshot(), 1, "initial")
+
+	w.Apply(PickUp{Carrier: NewHex(0, 0), Good: NewHex(0, 0)})
+	assertLogTotalIs(t, w.Snapshot(), 1, "after pickup")
+
+	for i := 0; i < 3; i++ {
+		w.Tick()
+		assertLogTotalIs(t, w.Snapshot(), 1, fmt.Sprintf("after tick %d", i+1))
+	}
+
+	w.Apply(Drop{Carrier: NewHex(3, 0)})
+	assertLogTotalIs(t, w.Snapshot(), 1, "after drop")
+
+	snap := w.Snapshot()
+	g := snap.Goods[0]
+	if g.Held {
+		t.Errorf("log should be free after drop, got Held=true (%+v)", g)
+	}
+	if g.Q != 3 || g.R != 0 {
+		t.Errorf("dropped log should be at carrier's hex (3,0), got (%d,%d)", g.Q, g.R)
+	}
+}
+
+// assertLogTotalIs counts free + held logs in the snapshot and fails if the
+// sum differs from want. The conservation law (issue #4) cares about the sum,
+// not the breakdown, so the assertion ignores Held.
+func assertLogTotalIs(t *testing.T, snap Snapshot, want int, when string) {
+	t.Helper()
+	n := 0
+	for _, g := range snap.Goods {
+		if g.Kind == "log" {
+			n++
+		}
+	}
+	if n != want {
+		t.Errorf("%s: free+held logs = %d, want %d (goods=%+v)", when, n, want, snap.Goods)
 	}
 }
 

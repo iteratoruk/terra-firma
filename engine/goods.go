@@ -64,6 +64,36 @@ func (p PickUp) apply(w *World) {
 	}
 }
 
+// Drop is the inverse of PickUp: it unlinks the good held by the carrier at
+// the given hex and places it back on the world at the carrier's current
+// position. V1 carriers hold at most one good, so the command identifies what
+// to drop only by *who is dropping it*; a multi-item carrier will need a
+// richer identifier. If no carrier is at the hex or it isn't holding anything,
+// the command is a no-op.
+type Drop struct {
+	Carrier Hex
+}
+
+func (d Drop) apply(w *World) {
+	var c *carrier
+	for _, x := range w.carriers {
+		if x.hex == d.Carrier {
+			c = x
+			break
+		}
+	}
+	if c == nil {
+		return
+	}
+	for _, g := range w.goods {
+		if g.holder == c {
+			g.hex = c.hex
+			g.holder = nil
+			return
+		}
+	}
+}
+
 // lessGood is a total order on goods used to make snapshot iteration
 // deterministic regardless of construction order.
 func lessGood(a, b *good) bool {
