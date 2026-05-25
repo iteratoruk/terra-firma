@@ -139,6 +139,67 @@ func TestRecoveryResetsStarvationStreak(t *testing.T) {
 	}
 }
 
+func TestEndToEndSameSeedDifferentOutcomes(t *testing.T) {
+	// Scenario 4 — the first game-shaped test in the project. Two worlds with
+	// identical seeds and population specs; the ONLY difference is the food
+	// supply. The seeded run resolves to two different outcomes after the same
+	// 20 ticks: the well-fed population survives, the unfed one is gone.
+	//
+	// With reserve 3 / metabolism 1 / limit 3:
+	//   World B (no grain): dies at the end of tick 6 (streak 4 > 3).
+	//   World A (5 grain @ (0,0)): eats +5, metabolises -1 each of ticks 1–5
+	//     (reserve climbs to 23); ticks 6–20 just metabolise (15 × -1),
+	//     leaving reserve = 8 at tick 20 — alive, reserve > 0.
+	//
+	// The seed is identical between the two worlds and is the same one used
+	// by the empty world above for the determinism story. Death (or survival)
+	// is a function of the configuration, not the seed; same seed AND same
+	// food = same outcome forever (determinism invariant).
+	const seed = 7
+	specs := []PopulationSpec{
+		{Hex: NewHex(0, 0), Reserve: 3, Metabolism: 1, StarvationLimit: 3},
+	}
+	tiles := []TileSpec{
+		{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+	}
+
+	worldA := NewWorld(Config{
+		Seed:        seed,
+		Tiles:       tiles,
+		Populations: specs,
+		Goods: []GoodSpec{
+			{Kind: "grain", Hex: NewHex(0, 0)},
+			{Kind: "grain", Hex: NewHex(0, 0)},
+			{Kind: "grain", Hex: NewHex(0, 0)},
+			{Kind: "grain", Hex: NewHex(0, 0)},
+			{Kind: "grain", Hex: NewHex(0, 0)},
+		},
+	})
+	worldB := NewWorld(Config{
+		Seed:        seed,
+		Tiles:       tiles,
+		Populations: specs,
+	})
+
+	for i := 0; i < 20; i++ {
+		worldA.Tick()
+		worldB.Tick()
+	}
+
+	snapA := worldA.Snapshot()
+	if len(snapA.Populations) != 1 {
+		t.Fatalf("world A after 20 ticks: want population still alive, got %d populations", len(snapA.Populations))
+	}
+	if snapA.Populations[0].Reserve <= 0 {
+		t.Errorf("world A after 20 ticks: want reserve > 0 (well-fed survives), got %d", snapA.Populations[0].Reserve)
+	}
+
+	snapB := worldB.Snapshot()
+	if len(snapB.Populations) != 0 {
+		t.Errorf("world B after 20 ticks: want population dead (no food), got %+v", snapB.Populations)
+	}
+}
+
 func countPopulationsAt(s Snapshot, h Hex) int {
 	n := 0
 	for _, p := range s.Populations {
