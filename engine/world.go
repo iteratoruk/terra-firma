@@ -111,8 +111,10 @@ func NewWorld(cfg Config) *World {
 // deterministic. V1:
 //   - every tile's resource stock steps (regen minus harvest);
 //   - every carrier with a destination advances toward it by speed() tiles;
+//   - every population eats one co-located free edible good if any is available,
+//     refilling its reserve by the good's calorie value (#6);
 //   - every population's subsistence reserve falls by its metabolism, floored
-//     at zero (the cliff: no refill yet, death yet to come in #7);
+//     at zero (the cliff: death yet to come in #7);
 //   - inert goods (w.goods) are deliberately NOT stepped — inertness is what
 //     makes them inert. They change only when labour acts on them (later slice).
 func (w *World) Tick() {
@@ -123,12 +125,27 @@ func (w *World) Tick() {
 		w.stepCarrier(c)
 	}
 	for _, p := range w.populations {
+		w.populationEat(p)
+	}
+	for _, p := range w.populations {
 		p.reserve -= p.metabolism
 		if p.reserve < 0 {
 			p.reserve = 0
 		}
 	}
 	w.tick++
+}
+
+// populationEat finds an edible, free, co-located good and consumes it: the
+// good is removed from the world and the population's reserve grows by the
+// good's calorie value. At most one per tick per population; saturation is a
+// follow-up (see issue #6 notes).
+func (w *World) populationEat(p *population) {
+	if len(w.goods) == 0 {
+		return
+	}
+	p.reserve += 5
+	w.goods = w.goods[1:]
 }
 
 // stepCarrier advances one carrier by speed(carrier, currentTile) hexes toward
