@@ -64,6 +64,36 @@ func TestHeavierMetabolismDepletesFaster(t *testing.T) {
 	}
 }
 
+func TestSnapshotExposesPopulationLocationReserveAndMetabolism(t *testing.T) {
+	// Scenario 4: legibility requirement. The snapshot is the only window in,
+	// so location, reserve, and metabolism must be visible there or they don't
+	// exist for any observer. Exactly one population is exposed, at (0,0),
+	// with the constructor's reserve and metabolism faithfully reported.
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+		},
+		Populations: []PopulationSpec{
+			{Hex: NewHex(0, 0), Reserve: 10, Metabolism: 1},
+		},
+	})
+
+	ps := w.Snapshot().Populations
+	if len(ps) != 1 {
+		t.Fatalf("want exactly 1 population in snapshot, got %d", len(ps))
+	}
+	p := ps[0]
+	if p.Q != 0 || p.R != 0 {
+		t.Errorf("position wrong: got (%d,%d), want (0,0)", p.Q, p.R)
+	}
+	if p.Reserve != 10 {
+		t.Errorf("reserve wrong: got %d, want 10", p.Reserve)
+	}
+	if p.Metabolism != 1 {
+		t.Errorf("metabolism wrong: got %d, want 1", p.Metabolism)
+	}
+}
+
 func populationsByHex(s Snapshot) map[Hex]PopulationSnapshot {
 	out := make(map[Hex]PopulationSnapshot, len(s.Populations))
 	for _, p := range s.Populations {
