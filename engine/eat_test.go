@@ -1,6 +1,9 @@
 package engine
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 // Eating — the first lifecycle hinge where a good leaves the world by being
 // *used up* rather than just moved. These tests pin the issue #6 acceptance
@@ -143,6 +146,95 @@ func TestPopulationEatsAtMostOneGoodPerTick(t *testing.T) {
 	}
 	if got := snap.Populations[0].Reserve; got != 7 {
 		t.Errorf("reserve after eating exactly one grain then metabolising: want 7, got %d", got)
+	}
+}
+
+func TestGrainConservationUnderArbitraryCommandsAndEating(t *testing.T) {
+	// Scenario 6 — conservation generalises. Grain that *leaves* the world by
+	// being eaten is accounted for in w.consumed, so the invariant becomes
+	// free + held + consumed == K at every tick under any sequence of
+	// pickup/drop commands plus autonomous eating.
+	//
+	// Validated by transient mutation per [[feedback_conservation_test_validation]]:
+	//   - drop the consumed++ from populationEat → consumed stays 0 while
+	//     grain disappears; assertion bites with free+held+0 < K.
+	//   - drop the slice-remove from populationEat → grain is eaten AND
+	//     remains; assertion bites with free+held+consumed > K.
+	cases := []struct {
+		name string
+		K, C int
+	}{
+		{"K=1_C=1", 1, 1},
+		{"K=3_C=1", 3, 1},
+		{"K=5_C=3", 5, 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := buildEatingConservationWorld(23, tc.K, tc.C)
+			assertGrainConserved(t, w, tc.K, "initial")
+			for step := 0; step < 200; step++ {
+				applyRandomCommand(w)
+				assertGrainConserved(t, w, tc.K, fmt.Sprintf("step %d after command", step))
+				w.Tick()
+				assertGrainConserved(t, w, tc.K, fmt.Sprintf("step %d after tick", step))
+				if t.Failed() {
+					return
+				}
+			}
+		})
+	}
+}
+
+// buildEatingConservationWorld is the eating analogue of
+// buildConservationWorld: grain (edible) instead of logs, plus a population at
+// the centre that will actually eat anything dropped on its hex. Carriers each
+// get a construction-time destination so the random-command harness can move
+// grain around the same way it moves logs in the #4 conservation test.
+// Metabolism is 0 so the test isolates the eating-conservation question from
+// the reserve-arithmetic one.
+func buildEatingConservationWorld(seed int64, K, C int) *World {
+	tiles := []TileSpec{}
+	for q := -3; q <= 3; q++ {
+		for r := -3; r <= 3; r++ {
+			tiles = append(tiles, TileSpec{Hex: NewHex(q, r), Resource: "soil", Capacity: 10})
+		}
+	}
+	goods := make([]GoodSpec, K)
+	for i := 0; i < K; i++ {
+		goods[i] = GoodSpec{Kind: "grain", Hex: NewHex(i-K/2, 0)}
+	}
+	carriers := make([]CarrierSpec, C)
+	for i := 0; i < C; i++ {
+		dest := NewHex(i-C/2, 1)
+		carriers[i] = CarrierSpec{
+			Type:        "porter",
+			Hex:         NewHex(i-C/2, -1),
+			Destination: &dest,
+		}
+	}
+	pops := []PopulationSpec{
+		{Hex: NewHex(0, 0), Reserve: 0, Metabolism: 0},
+	}
+	return NewWorld(Config{Seed: seed, Tiles: tiles, Goods: goods, Carriers: carriers, Populations: pops})
+}
+
+// assertGrainConserved checks free + held + consumed == want for grain.
+func assertGrainConserved(t *testing.T, w *World, want int, when string) {
+	t.Helper()
+	free, held := 0, 0
+	for _, g := range w.Snapshot().Goods {
+		if g.Kind != "grain" {
+			continue
+		}
+		if g.Held {
+			held++
+		} else {
+			free++
+		}
+	}
+	total := free + held + w.consumed
+	if total != want {
+		t.Errorf("%s: free(%d)+held(%d)+consumed(%d)=%d, want %d", when, free, held, w.consumed, total, want)
 	}
 }
 

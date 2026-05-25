@@ -51,6 +51,11 @@ type tile struct {
 
 // World is the authoritative, mutable simulation state. It is a value the engine
 // owns; nothing outside mutates it directly.
+//
+// consumed counts the goods that have left the world by being eaten (the only
+// way a good leaves the world in V1 — moving and dropping are mode changes, not
+// destructions). It generalises the #4 conservation invariant:
+// free + held + consumed == initial, for any kind of good.
 type World struct {
 	tick        uint64
 	rng         *RNG
@@ -58,6 +63,7 @@ type World struct {
 	goods       []*good       // kept in canonical order, same reason
 	carriers    []*carrier    // kept in canonical order, same reason
 	populations []*population // kept in canonical order, same reason
+	consumed    int
 }
 
 // NewWorld builds a world from a Config. Tiles are sorted into canonical hex
@@ -154,6 +160,7 @@ func (w *World) populationEat(p *population) {
 		}
 		p.reserve += cv
 		w.goods = append(w.goods[:i], w.goods[i+1:]...)
+		w.consumed++
 		return
 	}
 }
