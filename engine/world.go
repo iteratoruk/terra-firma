@@ -32,10 +32,11 @@ type TileSpec struct {
 // Config is the full deterministic description of a world's initial state.
 // Same Config => same world, forever.
 type Config struct {
-	Seed     int64
-	Tiles    []TileSpec
-	Goods    []GoodSpec
-	Carriers []CarrierSpec
+	Seed        int64
+	Tiles       []TileSpec
+	Goods       []GoodSpec
+	Carriers    []CarrierSpec
+	Populations []PopulationSpec
 }
 
 // tile is the engine's internal, mutable tile. A tile is a location that bears a
@@ -51,11 +52,12 @@ type tile struct {
 // World is the authoritative, mutable simulation state. It is a value the engine
 // owns; nothing outside mutates it directly.
 type World struct {
-	tick     uint64
-	rng      *RNG
-	tiles    []*tile    // kept in canonical hex order for deterministic iteration
-	goods    []*good    // kept in canonical order, same reason
-	carriers []*carrier // kept in canonical order, same reason
+	tick        uint64
+	rng         *RNG
+	tiles       []*tile       // kept in canonical hex order for deterministic iteration
+	goods       []*good       // kept in canonical order, same reason
+	carriers    []*carrier    // kept in canonical order, same reason
+	populations []*population // kept in canonical order, same reason
 }
 
 // NewWorld builds a world from a Config. Tiles are sorted into canonical hex
@@ -90,12 +92,18 @@ func NewWorld(cfg Config) *World {
 		carriers = append(carriers, &carrier{typ: cs.Type, hex: cs.Hex, destination: dest})
 	}
 	sortCarriers(carriers)
+	populations := make([]*population, 0, len(cfg.Populations))
+	for _, ps := range cfg.Populations {
+		populations = append(populations, &population{hex: ps.Hex, reserve: ps.Reserve, metabolism: ps.Metabolism})
+	}
+	sortPopulations(populations)
 	return &World{
-		tick:     0,
-		rng:      NewRNG(cfg.Seed),
-		tiles:    tiles,
-		goods:    goods,
-		carriers: carriers,
+		tick:        0,
+		rng:         NewRNG(cfg.Seed),
+		tiles:       tiles,
+		goods:       goods,
+		carriers:    carriers,
+		populations: populations,
 	}
 }
 
@@ -103,6 +111,8 @@ func NewWorld(cfg Config) *World {
 // deterministic. V1:
 //   - every tile's resource stock steps (regen minus harvest);
 //   - every carrier with a destination advances toward it by speed() tiles;
+//   - every population's subsistence reserve falls by its metabolism, floored
+//     at zero (the cliff: no refill yet, death yet to come in #7);
 //   - inert goods (w.goods) are deliberately NOT stepped — inertness is what
 //     makes them inert. They change only when labour acts on them (later slice).
 func (w *World) Tick() {
@@ -111,6 +121,12 @@ func (w *World) Tick() {
 	}
 	for _, c := range w.carriers {
 		w.stepCarrier(c)
+	}
+	for _, p := range w.populations {
+		p.reserve -= p.metabolism
+		if p.reserve < 0 {
+			p.reserve = 0
+		}
 	}
 	w.tick++
 }
@@ -167,10 +183,11 @@ func (w *World) Apply(c Command) { c.apply(w) }
 // (renderers, tests, dashboards). It carries levels AND rates, because trend is
 // a legibility requirement. It shares no mutable state with the World.
 type Snapshot struct {
-	Tick     uint64            `json:"tick"`
-	Tiles    []TileSnapshot    `json:"tiles"`
-	Goods    []GoodSnapshot    `json:"goods"`
-	Carriers []CarrierSnapshot `json:"carriers"`
+	Tick        uint64               `json:"tick"`
+	Tiles       []TileSnapshot       `json:"tiles"`
+	Goods       []GoodSnapshot       `json:"goods"`
+	Carriers    []CarrierSnapshot    `json:"carriers"`
+	Populations []PopulationSnapshot `json:"populations"`
 }
 
 // TileSnapshot is one tile's observable state. Net is included precomputed so a
@@ -193,10 +210,11 @@ type TileSnapshot struct {
 // the serialised form is stable (essential for golden-file tests).
 func (w *World) Snapshot() Snapshot {
 	out := Snapshot{
-		Tick:     w.tick,
-		Tiles:    make([]TileSnapshot, 0, len(w.tiles)),
-		Goods:    make([]GoodSnapshot, 0, len(w.goods)),
-		Carriers: make([]CarrierSnapshot, 0, len(w.carriers)),
+		Tick:        w.tick,
+		Tiles:       make([]TileSnapshot, 0, len(w.tiles)),
+		Goods:       make([]GoodSnapshot, 0, len(w.goods)),
+		Carriers:    make([]CarrierSnapshot, 0, len(w.carriers)),
+		Populations: make([]PopulationSnapshot, 0, len(w.populations)),
 	}
 	for _, t := range w.tiles {
 		out.Tiles = append(out.Tiles, TileSnapshot{
@@ -236,6 +254,14 @@ func (w *World) Snapshot() Snapshot {
 			Q:           c.hex.Q,
 			R:           c.hex.R,
 			Destination: dest,
+		})
+	}
+	for _, p := range w.populations {
+		out.Populations = append(out.Populations, PopulationSnapshot{
+			Q:          p.hex.Q,
+			R:          p.hex.R,
+			Reserve:    p.reserve,
+			Metabolism: p.metabolism,
 		})
 	}
 	return out
