@@ -126,6 +126,40 @@ func TestHeldGoodFollowsCarrierAndCoLocatedFreeGoodStaysPut(t *testing.T) {
 	}
 }
 
+func TestPickUpIsRejectedWhenCarrierAndGoodAreOnDifferentTiles(t *testing.T) {
+	// Scenario 2: pickup is a labour-mediated act — it can only happen where
+	// the labour is. A command issued for a carrier and good on different
+	// hexes must NOT link them; the good stays free at its tile. Validated by
+	// transient mutation (remove the same-hex check, confirm the test bites).
+	w := NewWorld(Config{
+		Tiles: []TileSpec{
+			{Hex: NewHex(0, 0), Resource: "soil", Capacity: 10},
+			{Hex: NewHex(1, 0), Resource: "soil", Capacity: 10},
+		},
+		Carriers: []CarrierSpec{
+			{Type: "porter", Hex: NewHex(0, 0)},
+		},
+		Goods: []GoodSpec{
+			{Kind: "log", Hex: NewHex(1, 0)},
+		},
+	})
+
+	w.Apply(PickUp{Carrier: NewHex(0, 0), Good: NewHex(1, 0)})
+	w.Tick()
+
+	snap := w.Snapshot()
+	if len(snap.Goods) != 1 {
+		t.Fatalf("expected 1 log in snapshot, got %d", len(snap.Goods))
+	}
+	g := snap.Goods[0]
+	if g.Held {
+		t.Errorf("log should NOT be held: carrier and log were on different tiles, got %+v", g)
+	}
+	if g.Q != 1 || g.R != 0 {
+		t.Errorf("free log should still be at (1,0), got (%d,%d)", g.Q, g.R)
+	}
+}
+
 func TestSnapshotListsFreeLogAtItsTile(t *testing.T) {
 	w := NewWorld(Config{
 		Tiles: []TileSpec{
