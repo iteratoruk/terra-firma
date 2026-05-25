@@ -38,13 +38,22 @@ func TestWorldTickIsDeterministic(t *testing.T) {
 	if runA != runB {
 		t.Fatal("same seed produced different snapshots after 50 ticks")
 	}
-	// NOTE: we deliberately do NOT assert that different seeds diverge. The V1
-	// tick is pure arithmetic (stock += regen-harvest) with no stochastic
-	// element, so the seed currently has nothing to influence and identical
-	// non-seed inputs SHOULD produce identical worlds regardless of seed. That
-	// is correct, not a bug. Reinstate a divergence assertion only once the tick
-	// actually consumes the RNG (e.g. weather, herd events). Until then the RNG
-	// is tested directly in TestSameSeedSameRNGSequence.
+
+	// As of issue #4, w.rng is consumed by the randomised command generator in
+	// goods_test.go — so the world's evolution genuinely depends on the seed
+	// for the first time. The deferred divergence assertion (previously vacuous
+	// because no part of world evolution touched the RNG) is now meaningful:
+	// same seed under the same randomised harness must produce the same world,
+	// AND different seeds must produce different worlds.
+	randA := runWorldUnderRandomCommands(t, 7, 50)
+	randB := runWorldUnderRandomCommands(t, 7, 50)
+	if randA != randB {
+		t.Fatal("same seed under randomised commands produced different snapshots")
+	}
+	randC := runWorldUnderRandomCommands(t, 8, 50)
+	if randA == randC {
+		t.Fatal("different seeds produced identical worlds under randomised commands — w.rng isn't driving evolution")
+	}
 }
 
 func TestSnapshotRoundTrips(t *testing.T) {
@@ -102,6 +111,26 @@ func runWorld(t *testing.T, seed int64, n int) string {
 	t.Helper()
 	w := NewWorld(Config{Seed: seed, Tiles: demoTiles()})
 	for i := 0; i < n; i++ {
+		w.Tick()
+	}
+	data, err := json.Marshal(w.Snapshot())
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	return string(data)
+}
+
+// runWorldUnderRandomCommands drives a small world by the same w.rng-backed
+// command generator used by the conservation property test (see
+// applyRandomCommand in goods_test.go). The serialised snapshot after n steps
+// is the comparable artefact: same seed → same string; different seed →
+// different string (the divergence assertion in TestWorldTickIsDeterministic
+// depends on the latter).
+func runWorldUnderRandomCommands(t *testing.T, seed int64, n int) string {
+	t.Helper()
+	w := buildConservationWorld(seed, 3, 2)
+	for i := 0; i < n; i++ {
+		applyRandomCommand(w)
 		w.Tick()
 	}
 	data, err := json.Marshal(w.Snapshot())
